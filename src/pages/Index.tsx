@@ -11,7 +11,10 @@ const Index = () => {
         </p>
         <div className="flex gap-4">
           <Button asChild>
-            <Link to="/profile">Update Profile</Link>
+            <Link to="/profile">Client Profile</Link>
+          </Button>
+          <Button variant="secondary" asChild>
+            <Link to="/freelancer-profile">Freelancer Profile</Link>
           </Button>
           <Button variant="outline" asChild>
             <Link to="/admin">Admin Dashboard</Link>
