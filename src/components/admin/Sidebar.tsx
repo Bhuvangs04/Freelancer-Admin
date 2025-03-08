@@ -1,10 +1,11 @@
-import { 
-  Users, 
-  LayoutDashboard, 
-  Mail, 
-  AlertCircle, 
+import {
+  Users,
+  LayoutDashboard,
+  Mail,
+  AlertCircle,
   CreditCard,
-  Menu
+  Menu,
+  Briefcase,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -23,14 +24,13 @@ const menuItems = [
   { title: "Dashboard", icon: LayoutDashboard, id: "dashboard" },
   { title: "Users", icon: Users, id: "users" },
   { title: "Payments", icon: CreditCard, id: "payments" },
-  { title: "Reports", icon: AlertCircle, id: "reports" },
-  { title: "Email", icon: Mail, id: "email" },
+  { title: "Payout", icon: Briefcase, id: "payout" },
 ];
 
-export const Sidebar = ({ 
-  setCurrentView, 
-  currentView 
-}: { 
+export const Sidebar = ({
+  setCurrentView,
+  currentView,
+}: {
   setCurrentView: (view: string) => void;
   currentView: string;
 }) => {
@@ -47,9 +47,7 @@ export const Sidebar = ({
                 <SidebarMenuItem key={item.id}>
                   <SidebarMenuButton
                     onClick={() => setCurrentView(item.id)}
-                    className={cn(
-                      currentView === item.id && "bg-secondary"
-                    )}
+                    className={cn(currentView === item.id && "bg-secondary")}
                   >
                     <item.icon className="h-4 w-4" />
                     <span>{item.title}</span>

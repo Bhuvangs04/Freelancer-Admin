@@ -1,8 +1,7 @@
 import { UsersTable } from "./UsersTable";
-import { PaymentsView } from "./PaymentsView";
-import { ReportsView } from "./ReportsView";
-import { EmailView } from "./EmailView";
+import PaymentsView from "./PaymentsView";
 import { Overview } from "./Overview";
+import Payout from "./PayoutPage";
 
 export const Dashboard = ({ currentView }: { currentView: string }) => {
   const renderView = () => {
@@ -11,10 +10,8 @@ export const Dashboard = ({ currentView }: { currentView: string }) => {
         return <UsersTable />;
       case "payments":
         return <PaymentsView />;
-      case "reports":
-        return <ReportsView />;
-      case "email":
-        return <EmailView />;
+      case "payout":
+        return <Payout />;
       default:
         return <Overview />;
     }

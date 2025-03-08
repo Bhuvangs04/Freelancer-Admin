@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import {
   Card,
   CardContent,
@@ -5,7 +6,16 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Users, DollarSign, AlertCircle, Mail, TrendingUp, UserX, CheckCircle, Clock } from "lucide-react";
+import {
+  Users,
+  DollarSign,
+  AlertCircle,
+  Mail,
+  TrendingUp,
+  UserX,
+  CheckCircle,
+  Clock,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   BarChart,
@@ -16,24 +26,49 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
+import axios from "axios";
 
-const data = [
-  { name: "Jan", value: 400 },
-  { name: "Feb", value: 300 },
-  { name: "Mar", value: 600 },
-  { name: "Apr", value: 800 },
-  { name: "May", value: 500 },
-  { name: "Jun", value: 700 },
+// Sample data for the revenue chart
+const chartData = [
+  { name: "Jan", value: 35000 },
+  { name: "Feb", value: 0 },
+  { name: "Mar", value: 0 },
+  { name: "Apr", value: 0 },
+  { name: "May", value: 0 },
+  { name: "Jun", value: 0 },
 ];
 
 export const Overview = () => {
+  const [dashboardData, setDashboardData] = useState(null);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const response = await axios.get(
+          `${import.meta.env.VITE_API_URL}/admin/dashboard-overview`,
+          {
+            withCredentials: true,
+          }
+        );
+        setDashboardData(response.data);
+      } catch (error) {
+        console.error("Error fetching dashboard data:", error);
+      }
+    };
+
+    fetchData();
+  }, []);
+
+  if (!dashboardData) {
+    return <div>Loading...</div>;
+  }
+
   return (
     <div className="space-y-8">
       <div className="flex justify-between items-center">
         <h2 className="text-3xl font-bold">Dashboard Overview</h2>
-        <Button>Download Report</Button>
       </div>
-      
+
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -41,10 +76,7 @@ export const Overview = () => {
             <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">2,543</div>
-            <p className="text-xs text-muted-foreground">
-              +180 from last month
-            </p>
+            <div className="text-2xl font-bold">{dashboardData.totalUsers}</div>
           </CardContent>
         </Card>
 
@@ -54,36 +86,20 @@ export const Overview = () => {
             <DollarSign className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">$45,231.89</div>
-            <p className="text-xs text-muted-foreground">
-              +20.1% from last month
-            </p>
+            <div className="text-2xl font-bold">₹{dashboardData.revenue}</div>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Active Reports</CardTitle>
-            <AlertCircle className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">23</div>
-            <p className="text-xs text-muted-foreground">
-              12 require attention
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Pending Emails</CardTitle>
+            <CardTitle className="text-sm font-medium">
+              Pending Emails
+            </CardTitle>
             <Mail className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">15</div>
-            <p className="text-xs text-muted-foreground">
-              5 urgent notifications
-            </p>
+            <div className="text-2xl font-bold">0</div>
+            <p className="text-xs text-muted-foreground">0</p>
           </CardContent>
         </Card>
       </div>
@@ -97,7 +113,7 @@ export const Overview = () => {
           <CardContent>
             <div className="h-[300px]">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={data}>
+                <BarChart data={chartData}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="name" />
                   <YAxis />
@@ -121,28 +137,38 @@ export const Overview = () => {
                   <TrendingUp className="h-4 w-4 text-green-500" />
                   <span>Active Freelancers</span>
                 </div>
-                <span className="font-bold">1,234</span>
+                <span className="font-bold">
+                  {dashboardData.quickStats.activeFreelancers}
+                </span>
               </div>
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-2">
                   <UserX className="h-4 w-4 text-red-500" />
                   <span>Suspended Accounts</span>
                 </div>
-                <span className="font-bold">23</span>
+                <span className="font-bold">
+                  {dashboardData.quickStats.suspendedAccounts}
+                </span>
               </div>
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-2">
                   <CheckCircle className="h-4 w-4 text-green-500" />
                   <span>Completed Projects</span>
                 </div>
-                <span className="font-bold">3,456</span>
+                <span className="font-bold">
+                  {" "}
+                  {dashboardData.quickStats.completedProjects}
+                </span>
               </div>
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-2">
                   <Clock className="h-4 w-4 text-yellow-500" />
                   <span>Pending Reviews</span>
                 </div>
-                <span className="font-bold">45</span>
+                <span className="font-bold">
+                  {" "}
+                  {dashboardData.quickStats.pendingReviews}
+                </span>
               </div>
             </div>
           </CardContent>

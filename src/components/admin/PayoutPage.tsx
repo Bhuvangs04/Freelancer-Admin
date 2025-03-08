@@ -16,23 +16,25 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { ArrowDownToLine, CheckCircle } from "lucide-react";
 
-const PaymentsView = () => {
-  const [transactions, setTransactions] = useState([]);
+
+
+const Payout = () => {
+  const [payouts, setPayouts] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [selectedTransaction, setSelectedTransaction] = useState(null);
+  const [selectedPayout, setSelectedPayout] = useState(null);
   const [detailsModalOpen, setDetailsModalOpen] = useState(false);
   const { toast } = useToast();
 
-  // Fetch transactions
+  // Fetch payouts
   useEffect(() => {
-    const fetchTransactions = async () => {
+    const fetchPayouts = async () => {
       setLoading(true);
       try {
         const response = await fetch(
-          `${import.meta.env.VITE_API_URL}/admin/all/transaction`,
-          {
-            credentials: "include",
+          `${import.meta.env.VITE_API_URL}/admin/pay-out/freelancers`,{
+            credentials:"include"
           }
         );
 
@@ -41,11 +43,11 @@ const PaymentsView = () => {
         }
 
         const data = await response.json();
-        setTransactions(data);
+        setPayouts(data.payouts);
       } catch (error) {
-        console.error("Failed to fetch transactions:", error);
+        console.error("Failed to fetch payouts:", error);
         toast({
-          title: "Error fetching transactions",
+          title: "Error fetching payouts",
           description: "Please try again later",
           variant: "destructive",
         });
@@ -54,35 +56,8 @@ const PaymentsView = () => {
       }
     };
 
-    fetchTransactions();
+    fetchPayouts();
   }, [toast]);
-
-  // Fetch transaction details
-  const fetchTransactionDetails = async (id: string) => {
-    try {
-      const response = await fetch(
-        `${import.meta.env.VITE_API_URL}/admin/transaction/${id}`,
-        {
-          credentials: "include",
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error(`API error: ${response.status}`);
-      }
-
-      const data = await response.json();
-      setSelectedTransaction(data);
-      setDetailsModalOpen(true);
-    } catch (error) {
-      console.error(`Failed to fetch transaction details for ID ${id}:`, error);
-      toast({
-        title: "Error fetching transaction details",
-        description: "Please try again later",
-        variant: "destructive",
-      });
-    }
-  };
 
   // Handle Excel export
   const handleExportExcel = async () => {
@@ -93,7 +68,7 @@ const PaymentsView = () => {
       });
 
       const response = await fetch(
-        `${import.meta.env.VITE_API_URL}/admin/get/trasacntion/excel`,
+        `${import.meta.env.VITE_API_URL}/admin/payout/excel`,
         {
           credentials: "include",
         }
@@ -118,7 +93,7 @@ const PaymentsView = () => {
       const contentDisposition = response.headers.get("content-disposition");
       const fileName = contentDisposition
         ? contentDisposition.split("filename=")[1].replace(/"/g, "")
-        : "transactions.xlsx";
+        : "payouts.xlsx";
 
       a.download = fileName;
 
@@ -142,24 +117,67 @@ const PaymentsView = () => {
     }
   };
 
-  // Handle refund
-  const handleRefund = () => {
-    toast({
-      title: "Currently Refund operation is unavailable",
-      description: "This feature will be implemented soon",
-    });
+  // Process single payout
+  const processPayout = async (userId: string) => {
+    try {
+      toast({
+        title: "Processing payout",
+        description: "Please wait...",
+      });
+
+      const response = await fetch(
+        `${import.meta.env.VITE_API_URL}/admin/pay-out/freelancers/${userId}`,
+        {
+          method: "POST",
+          credentials:"include",
+          headers: {
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(`API error: ${response.status}`);
+      }
+
+      setPayouts((prev) =>
+        prev.map((payout) =>
+          payout.freelancerId._id === userId
+            ? { ...payout, status: "processed" }
+            : payout
+        )
+      );
+
+      toast({
+        title: "Payout processed",
+        description: "The payout has been successfully processed",
+      });
+    } catch (error) {
+      console.error(`Failed to process payout for user ${userId}:`, error);
+      toast({
+        title: "Error processing payout",
+        description: "Please try again later",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // View payout details
+  const viewPayoutDetails = (payout) => {
+    setSelectedPayout(payout);
+    setDetailsModalOpen(true);
   };
 
   return (
     <div className="container mx-auto py-8">
       <div className="space-y-6">
         <div className="flex justify-between items-center">
-          <h2 className="text-3xl font-bold">Transactions</h2>
+          <h2 className="text-3xl font-bold">User Payouts</h2>
           <div className="flex gap-2">
             <Button variant="outline" onClick={handleExportExcel}>
+              <ArrowDownToLine className="mr-2 h-4 w-4" />
               Export Excel
             </Button>
-            <Button onClick={handleRefund}>Process Refunds</Button>
           </div>
         </div>
 
@@ -167,9 +185,9 @@ const PaymentsView = () => {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Transaction ID</TableHead>
-                <TableHead>User</TableHead>
-                <TableHead>Date</TableHead>
+                <TableHead>User ID</TableHead>
+                <TableHead>Name</TableHead>
+                <TableHead>Request Date</TableHead>
                 <TableHead>Amount</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Actions</TableHead>
@@ -195,45 +213,53 @@ const PaymentsView = () => {
                     <TableCell>
                       <Skeleton className="h-6 w-20 rounded-full" />
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="flex gap-2">
+                      <Skeleton className="h-9 w-20 rounded" />
                       <Skeleton className="h-9 w-20 rounded" />
                     </TableCell>
                   </TableRow>
                 ))
-              ) : transactions.length > 0 ? (
-                transactions.map((transaction) => (
-                  <TableRow key={transaction.transactionId}>
+              ) : payouts.length > 0 ? (
+                payouts.map((payout) => (
+                  <TableRow key={payout._id}>
                     <TableCell className="font-medium">
-                      {transaction.transactionId}
+                      {payout.freelancerId._id}
                     </TableCell>
-                    <TableCell>{transaction.userId.username}</TableCell>
+                    <TableCell>{payout.freelancerId.username}</TableCell>
                     <TableCell>
-                      {new Date(transaction.createdAt).toLocaleString()}
+                      {new Date(payout.createdAt).toLocaleDateString()}
                     </TableCell>
-                    <TableCell>₹{transaction.amount.toFixed(2)}</TableCell>
+                    <TableCell>₹{payout.amount.toFixed(2)}</TableCell>
                     <TableCell>
                       <span
                         className={`px-2 py-1 rounded-full text-xs ${
-                          transaction.status === "completed"
+                          payout.status === "processed"
                             ? "bg-green-100 text-green-800"
-                            : transaction.status === "pending"
+                            : payout.status === "pending"
                             ? "bg-yellow-100 text-yellow-800"
                             : "bg-red-100 text-red-800"
                         }`}
                       >
-                        {transaction.status}
+                        {payout.status}
                       </span>
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="flex gap-2">
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() =>
-                          fetchTransactionDetails(transaction.projectId)
-                        }
+                        onClick={() => viewPayoutDetails(payout)}
                       >
                         Details
                       </Button>
+                      {payout.status === "pending" && (
+                        <Button
+                          size="sm"
+                          onClick={() => processPayout(payout.freelancerId._id)}
+                        >
+                          <CheckCircle className="mr-2 h-4 w-4" />
+                          Process
+                        </Button>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))
@@ -243,7 +269,7 @@ const PaymentsView = () => {
                     colSpan={6}
                     className="text-center py-8 text-muted-foreground"
                   >
-                    No transactions found.
+                    No pending payouts found.
                   </TableCell>
                 </TableRow>
               )}
@@ -251,63 +277,35 @@ const PaymentsView = () => {
           </Table>
         </div>
 
-        {/* Transaction Details Modal */}
+        {/* Payout Details Modal */}
         <Dialog open={detailsModalOpen} onOpenChange={setDetailsModalOpen}>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Transaction Details</DialogTitle>
+              <DialogTitle>Payout Details</DialogTitle>
             </DialogHeader>
 
-            {selectedTransaction ? (
+            {selectedPayout ? (
               <div className="space-y-4 mt-4">
                 <div className="grid grid-cols-2 gap-2">
-                  <div className="text-sm text-muted-foreground">
-                    Transaction ID
-                  </div>
-                  <div>{selectedTransaction.transactionId}</div>
+                  <div className="text-sm text-muted-foreground">User ID</div>
+                  <div>{selectedPayout.freelancerId._id}</div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-2">
-                  <div className="text-sm text-muted-foreground">User</div>
-                  <div>{selectedTransaction.userId.username}</div>
+                  <div className="text-sm text-muted-foreground">Name</div>
+                  <div>{selectedPayout.freelancerId.username}</div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-2">
                   <div className="text-sm text-muted-foreground">
-                    Project :{" "}
+                    Request Date
                   </div>
-                  <div>{selectedTransaction.projectId.title}</div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="text-sm text-muted-foreground">Budget : </div>
-                  <div>₹{selectedTransaction.projectId.budget.toFixed(2)}</div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="text-sm text-muted-foreground">Date</div>
-                  <div>
-                    {" "}
-                    {new Date(selectedTransaction.createdAt).toLocaleString()}
-                  </div>
+                  <div>{selectedPayout.createdAt}</div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-2">
                   <div className="text-sm text-muted-foreground">Amount</div>
-                  <div>₹{selectedTransaction.amount.toFixed(2)}</div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="text-sm text-blue-500">
-                    Commission earned:
-                  </div>
-                  <div>
-                    ₹
-                    {(
-                      selectedTransaction.amount.toFixed(2) -
-                      selectedTransaction.projectId.budget.toFixed(2)
-                    ).toFixed(2)}
-                  </div>
+                  <div>₹{selectedPayout.amount.toFixed(2)}</div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-2">
@@ -315,22 +313,51 @@ const PaymentsView = () => {
                   <div>
                     <span
                       className={`px-2 py-1 rounded-full text-xs ${
-                        selectedTransaction.status === "completed"
+                        selectedPayout.status === "processed"
                           ? "bg-green-100 text-green-800"
-                          : selectedTransaction.status === "pending"
+                          : selectedPayout.status === "pending"
                           ? "bg-yellow-100 text-yellow-800"
                           : "bg-red-100 text-red-800"
                       }`}
                     >
-                      {selectedTransaction.status}
+                      {selectedPayout.status}
                     </span>
                   </div>
                 </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="text-sm text-muted-foreground">
+                    Account Details:
+                  </div>
+                  <ol>
+                    <li className="text-sm text-blue-500">
+                      Account Name: {selectedPayout.bankDetails.accountName}
+                    </li>
+                    <li className="text-sm text-blue-500">
+                      Account Number: {selectedPayout.bankDetails.accountNumber}
+                    </li>
+                    <li className="text-sm text-blue-500">
+                      Bank Ifsc code: {selectedPayout.bankDetails.ifscCode}
+                    </li>
+                  </ol>
+                </div>
+
+                {selectedPayout.status === "pending" && (
+                  <div className="flex justify-end mt-4">
+                    <Button
+                      onClick={() => {
+                        processPayout(selectedPayout.freelancerId._id);
+                        setDetailsModalOpen(false);
+                      }}
+                    >
+                      <CheckCircle className="mr-2 h-4 w-4" />
+                      Process Payout
+                    </Button>
+                  </div>
+                )}
               </div>
             ) : (
-              <div className="py-4 text-center">
-                Loading transaction details...
-              </div>
+              <div className="py-4 text-center">Loading payout details...</div>
             )}
           </DialogContent>
         </Dialog>
@@ -339,4 +366,4 @@ const PaymentsView = () => {
   );
 };
 
-export default PaymentsView;
+export default Payout;
