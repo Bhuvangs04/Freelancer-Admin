@@ -206,7 +206,7 @@ const PaymentsView = () => {
                     <TableCell className="font-medium">
                       {transaction.transactionId}
                     </TableCell>
-                    <TableCell>{transaction.userId.username}</TableCell>
+                    <TableCell>{transaction.userId.username || "Unknown"}</TableCell>
                     <TableCell>
                       {new Date(transaction.createdAt).toLocaleString()}
                     </TableCell>
@@ -269,7 +269,7 @@ const PaymentsView = () => {
 
                 <div className="grid grid-cols-2 gap-2">
                   <div className="text-sm text-muted-foreground">User</div>
-                  <div>{selectedTransaction.userId.username}</div>
+                  <div>{selectedTransaction.userId.username || "Unknown"}</div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-2">
