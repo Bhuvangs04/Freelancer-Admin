@@ -9,17 +9,29 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { Switch } from "@/components/ui/switch";
-import { Loader2, Ban } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Loader2, Ban, Search, Eye, ShieldOff } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { BanUserDialog } from "./BanUserDialog";
+import axios from "axios";
+
+const API = import.meta.env.VITE_API_URL;
 
 interface User {
-  _id: number;
+  _id: string;
   username: string;
   email: string;
-  isBanned: string;
+  isBanned: boolean;
   role: string;
+  status: string;
+  createdAt: string;
 }
 
 export const UsersTable = () => {
@@ -27,117 +39,66 @@ export const UsersTable = () => {
   const queryClient = useQueryClient();
   const [banDialogOpen, setBanDialogOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
+  const [search, setSearch] = useState("");
+  const [roleFilter, setRoleFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [page, setPage] = useState(1);
 
-  // Fetch all users
   const {
-    data: users,
+    data,
     isLoading,
     error,
   } = useQuery({
-    queryKey: ["users"],
+    queryKey: ["users", page, search, roleFilter, statusFilter],
     queryFn: async () => {
-      try {
-        const response = await fetch(
-          `${import.meta.env.VITE_API_URL}/admin/get/users`,
-          {
-            credentials: "include",
-          }
-        );
-        if (!response.ok) {
-          throw new Error("Failed to fetch users");
-        }
-        const data = await response.json();
-        return data.users || [];
-      } catch (error) {
-        console.error("Error fetching users:", error);
-        throw error;
-      }
+      const params = new URLSearchParams();
+      params.set("page", page.toString());
+      params.set("limit", "20");
+      if (search) params.set("search", search);
+      if (roleFilter !== "all") params.set("role", roleFilter);
+      if (statusFilter !== "all") params.set("status", statusFilter);
+
+      const res = await axios.get(`${API}/admin/users?${params}`, {
+        withCredentials: true,
+      });
+      return res.data;
     },
-    // Fallback to empty array if API fails
-    placeholderData: [],
+    placeholderData: { users: [], pagination: { total: 0, pages: 1 } },
   });
 
-  // Ban user mutation
-  const banUserMutation = useMutation({
-    mutationFn: async ({
-      userId,
-      banType,
-    }: {
-      userId: number;
-      banType: "temporary" | "permanent";
-    }) => {
-      const endpoint =
-        banType === "temporary"
-          ? `${import.meta.env.VITE_API_URL}/admin/ban-user/true/${userId}`
-          : `${
-              import.meta.env.VITE_API_URL
-            }/admin/ban_user/${userId}/ban_permanent`;
-
-      const response = await fetch(endpoint, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        credentials: "include",
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to ban user`);
-      }
-
-      return await response.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["users"] });
-      toast({
-        title: "User Banned",
-        description: "User has been banned successfully",
-      });
-    },
-    onError: (error) => {
-      toast({
-        title: "Ban Failed",
-        description: error.message || "Failed to ban user",
-        variant: "destructive",
-      });
-    },
-  });
-
-  // Unban user mutation
-  const unbanUserMutation = useMutation({
-    mutationFn: async ({ userId }: { userId: number }) => {
-      const response = await fetch(
-        `${
-          import.meta.env.VITE_API_URL
-        }/admin/relase_ban_user/${userId}/realsed/false`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          credentials: "include",
-        }
+  const blockMutation = useMutation({
+    mutationFn: async ({ userId, reason, duration }: { userId: string; reason: string; duration?: number }) => {
+      const res = await axios.put(
+        `${API}/admin/users/${userId}/block`,
+        { reason, duration },
+        { withCredentials: true }
       );
-
-      if (!response.ok) {
-        throw new Error(`Failed to unban user`);
-      }
-
-      return await response.json();
+      return res.data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["users"] });
-      toast({
-        title: "User Unbanned",
-        description: "User has been unbanned successfully",
-      });
+      toast({ title: "User Blocked", description: "User has been blocked successfully" });
     },
-    onError: (error) => {
-      toast({
-        title: "Unban Failed",
-        description: error.message || "Failed to unban user",
-        variant: "destructive",
-      });
+    onError: (err: any) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const unblockMutation = useMutation({
+    mutationFn: async (userId: string) => {
+      const res = await axios.put(
+        `${API}/admin/users/${userId}/unblock`,
+        {},
+        { withCredentials: true }
+      );
+      return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["users"] });
+      toast({ title: "User Unblocked", description: "User has been unblocked successfully" });
+    },
+    onError: (err: any) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
     },
   });
 
@@ -148,19 +109,19 @@ export const UsersTable = () => {
 
   const handleBanConfirm = (banType: "temporary" | "permanent") => {
     if (selectedUser) {
-      banUserMutation.mutate({ userId: selectedUser._id, banType });
+      blockMutation.mutate({
+        userId: selectedUser._id,
+        reason: "Admin action",
+        duration: banType === "temporary" ? 7 : undefined,
+      });
       setBanDialogOpen(false);
     }
-  };
-
-  const handleUnban = (userId: number) => {
-    unbanUserMutation.mutate({ userId });
   };
 
   if (isLoading) {
     return (
       <div className="flex justify-center items-center h-64">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <Loader2 className="h-8 w-8 animate-spin text-violet-600" />
         <span className="ml-2">Loading users...</span>
       </div>
     );
@@ -170,38 +131,74 @@ export const UsersTable = () => {
     return (
       <div className="text-center p-8 bg-red-50 rounded-lg border border-red-200 text-red-800">
         <p className="font-semibold">Error loading users</p>
-        <p className="text-sm mt-2">
-          {(error as Error).message || "Please try again later"}
-        </p>
-        <Button
-          className="mt-4"
-          variant="outline"
-          onClick={() => queryClient.invalidateQueries({ queryKey: ["users"] })}
-        >
+        <Button className="mt-4" variant="outline" onClick={() => queryClient.invalidateQueries({ queryKey: ["users"] })}>
           Retry
         </Button>
       </div>
     );
   }
 
+  const { users = [], pagination = { total: 0, pages: 1, page: 1 } } = data || {};
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h2 className="text-3xl font-bold">
-          Users Management ({users.length})
-        </h2>
-        <Button>Export Users</Button>
+        <div>
+          <h2 className="text-3xl font-bold">Users Management</h2>
+          <p className="text-muted-foreground">{pagination.total} total users</p>
+        </div>
+        <a
+          href={`${API}/admin/reports/users/excel`}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          <Button variant="outline">Export Excel</Button>
+        </a>
       </div>
 
-      {users && users.length > 0 ? (
+      {/* Filters */}
+      <div className="flex gap-3">
+        <div className="relative flex-1 max-w-sm">
+          <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Search by name or email..."
+            className="pl-9"
+            value={search}
+            onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+          />
+        </div>
+        <Select value={roleFilter} onValueChange={(v) => { setRoleFilter(v); setPage(1); }}>
+          <SelectTrigger className="w-40">
+            <SelectValue placeholder="Role" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Roles</SelectItem>
+            <SelectItem value="freelancer">Freelancer</SelectItem>
+            <SelectItem value="client">Client</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(1); }}>
+          <SelectTrigger className="w-40">
+            <SelectValue placeholder="Status" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Status</SelectItem>
+            <SelectItem value="active">Active</SelectItem>
+            <SelectItem value="banned">Banned</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      {users.length > 0 ? (
         <div className="rounded-md border shadow-sm">
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>Name</TableHead>
                 <TableHead>Email</TableHead>
-                <TableHead>Type</TableHead>
+                <TableHead>Role</TableHead>
                 <TableHead>Status</TableHead>
+                <TableHead>Joined</TableHead>
                 <TableHead>Actions</TableHead>
               </TableRow>
             </TableHeader>
@@ -210,17 +207,24 @@ export const UsersTable = () => {
                 <TableRow key={user._id}>
                   <TableCell className="font-medium">{user.username}</TableCell>
                   <TableCell>{user.email}</TableCell>
-                  <TableCell>{user.role}</TableCell>
                   <TableCell>
-                    <span
-                      className={`px-2 py-1 rounded-full text-xs ${
-                        !user.isBanned
-                          ? "bg-green-100 text-green-800"
-                          : "bg-red-100 text-red-800"
-                      }`}
-                    >
-                      {!user.isBanned ? "Active" : "Banned"}
+                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${user.role === "freelancer"
+                        ? "bg-blue-100 text-blue-800"
+                        : "bg-purple-100 text-purple-800"
+                      }`}>
+                      {user.role}
                     </span>
+                  </TableCell>
+                  <TableCell>
+                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${!user.isBanned
+                        ? "bg-green-100 text-green-800"
+                        : "bg-red-100 text-red-800"
+                      }`}>
+                      {!user.isBanned ? "Active" : "Blocked"}
+                    </span>
+                  </TableCell>
+                  <TableCell className="text-muted-foreground text-sm">
+                    {new Date(user.createdAt).toLocaleDateString()}
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-2">
@@ -229,18 +233,18 @@ export const UsersTable = () => {
                           variant="destructive"
                           size="sm"
                           onClick={() => handleBanClick(user)}
-                          className="flex items-center gap-1"
                         >
-                          <Ban className="h-4 w-4" />
-                          Ban
+                          <Ban className="h-3 w-3 mr-1" />
+                          Block
                         </Button>
                       ) : (
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => handleUnban(user._id)}
+                            onClick={() => unblockMutation.mutate(user._id)}
                         >
-                          Unban
+                            <ShieldOff className="h-3 w-3 mr-1" />
+                            Unblock
                         </Button>
                       )}
                     </div>
@@ -253,6 +257,31 @@ export const UsersTable = () => {
       ) : (
         <div className="text-center p-8 bg-muted/30 rounded-lg border">
           <p className="text-muted-foreground">No users found</p>
+        </div>
+      )}
+
+      {/* Pagination */}
+      {pagination.pages > 1 && (
+        <div className="flex justify-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={page <= 1}
+            onClick={() => setPage(page - 1)}
+          >
+            Previous
+          </Button>
+          <span className="flex items-center px-4 text-sm text-muted-foreground">
+            Page {page} of {pagination.pages}
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={page >= pagination.pages}
+            onClick={() => setPage(page + 1)}
+          >
+            Next
+          </Button>
         </div>
       )}
 
