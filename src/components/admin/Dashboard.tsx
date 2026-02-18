@@ -11,6 +11,8 @@ import ReportsView from "./ReportsView";
 import ActivityLogsView from "./ActivityLogsView";
 import { DisputesView } from "./DisputesView";
 import PerformanceView from "./PerformanceView";
+import { AdminSettingsView } from "./AdminSettingsView";
+import { AdminManagementView } from "./AdminManagementView";
 
 export const Dashboard = ({ currentView }: { currentView: string }) => {
   const renderView = () => {
@@ -39,6 +41,10 @@ export const Dashboard = ({ currentView }: { currentView: string }) => {
         return <DisputesView />;
       case "performance":
         return <PerformanceView />;
+      case "account-settings":
+        return <AdminSettingsView />;
+      case "admin-management":
+        return <AdminManagementView />;
       default:
         return <Overview />;
     }

@@ -276,12 +276,12 @@ const PaymentsView = () => {
                   <div className="text-sm text-muted-foreground">
                     Project :{" "}
                   </div>
-                  <div>{selectedTransaction.projectId.title}</div>
+                  <div>{selectedTransaction?.projectId?.title || "Unknown"}</div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-2">
                   <div className="text-sm text-muted-foreground">Budget : </div>
-                  <div>₹{selectedTransaction.projectId.budget.toFixed(2)}</div>
+                  <div>₹{selectedTransaction?.projectId?.budget.toFixed(2) || "Unknown"}</div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-2">

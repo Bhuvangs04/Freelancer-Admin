@@ -11,8 +11,11 @@ import {
   BarChart3,
   Activity,
   AlertTriangle,
+  UserCog,
+  ShieldCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/lib/auth";
 import {
   Sidebar as ShadcnSidebar,
   SidebarContent,
@@ -63,6 +66,13 @@ const menuSections = [
       { title: "Performance", icon: BarChart3, id: "performance" },
     ],
   },
+  {
+    label: "Account",
+    items: [
+      { title: "Account Settings", icon: UserCog, id: "account-settings" },
+      { title: "Admin Management", icon: ShieldCheck, id: "admin-management", superAdminOnly: true },
+    ],
+  },
 ];
 
 export const Sidebar = ({
@@ -72,6 +82,9 @@ export const Sidebar = ({
   setCurrentView: (view: string) => void;
   currentView: string;
 }) => {
+  const { admin } = useAuth();
+  const isSuperAdmin = admin?.role === "super_admin";
+
   return (
     <ShadcnSidebar>
       <SidebarContent>
@@ -81,33 +94,42 @@ export const Sidebar = ({
           </h1>
           <p className="text-xs text-muted-foreground mt-0.5">FreelancerHub</p>
         </div>
-        {menuSections.map((section) => (
-          <SidebarGroup key={section.label}>
-            <SidebarGroupLabel className="text-xs uppercase tracking-wider text-muted-foreground/70">
-              {section.label}
-            </SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                {section.items.map((item) => (
-                  <SidebarMenuItem key={item.id}>
-                    <SidebarMenuButton
-                      onClick={() => setCurrentView(item.id)}
-                      className={cn(
-                        "transition-colors",
-                        currentView === item.id &&
-                        "bg-violet-50 text-violet-700 font-medium"
-                      )}
-                    >
-                      <item.icon className="h-4 w-4" />
-                      <span>{item.title}</span>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                ))}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        ))}
+        {menuSections.map((section) => {
+          // Filter items based on role
+          const visibleItems = section.items.filter(
+            (item) => !(item as any).superAdminOnly || isSuperAdmin
+          );
+          if (visibleItems.length === 0) return null;
+
+          return (
+            <SidebarGroup key={section.label}>
+              <SidebarGroupLabel className="text-xs uppercase tracking-wider text-muted-foreground/70">
+                {section.label}
+              </SidebarGroupLabel>
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  {visibleItems.map((item) => (
+                    <SidebarMenuItem key={item.id}>
+                      <SidebarMenuButton
+                        onClick={() => setCurrentView(item.id)}
+                        className={cn(
+                          "transition-colors",
+                          currentView === item.id &&
+                          "bg-violet-50 text-violet-700 font-medium"
+                        )}
+                      >
+                        <item.icon className="h-4 w-4" />
+                        <span>{item.title}</span>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  ))}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+          );
+        })}
       </SidebarContent>
     </ShadcnSidebar>
   );
 };
+
