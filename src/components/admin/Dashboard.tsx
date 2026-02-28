@@ -13,6 +13,8 @@ import { DisputesView } from "./DisputesView";
 import PerformanceView from "./PerformanceView";
 import { AdminSettingsView } from "./AdminSettingsView";
 import { AdminManagementView } from "./AdminManagementView";
+import { SkillVerificationsView } from "./SkillVerificationsView";
+import { SkillChallengesView } from "./SkillChallengesView";
 
 export const Dashboard = ({ currentView }: { currentView: string }) => {
   const renderView = () => {
@@ -45,6 +47,10 @@ export const Dashboard = ({ currentView }: { currentView: string }) => {
         return <AdminSettingsView />;
       case "admin-management":
         return <AdminManagementView />;
+      case "skills":
+        return <SkillVerificationsView />;
+      case "challenges":
+        return <SkillChallengesView />;
       default:
         return <Overview />;
     }
@@ -52,3 +58,4 @@ export const Dashboard = ({ currentView }: { currentView: string }) => {
 
   return renderView();
 };
+

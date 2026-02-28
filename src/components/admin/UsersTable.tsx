@@ -17,9 +17,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Loader2, Ban, Search, Eye, ShieldOff } from "lucide-react";
+import { Loader2, Ban, Search, ShieldOff, Snowflake, Flame } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { BanUserDialog } from "./BanUserDialog";
+import { WalletFreezeDialog } from "./WalletFreezeDialog";
 import axios from "axios";
 
 const API = import.meta.env.VITE_API_URL;
@@ -32,17 +33,21 @@ interface User {
   role: string;
   status: string;
   createdAt: string;
+  wallet?: { withdrawalsBlocked?: boolean; withdrawalBlockedReason?: string };
 }
 
 export const UsersTable = () => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [banDialogOpen, setBanDialogOpen] = useState(false);
+  const [freezeDialogOpen, setFreezeDialogOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [page, setPage] = useState(1);
+  // Track optimistic wallet freeze state per userId
+  const [frozenUsers, setFrozenUsers] = useState<Record<string, boolean>>({});
 
   const {
     data,
@@ -102,9 +107,56 @@ export const UsersTable = () => {
     },
   });
 
+  const freezeMutation = useMutation({
+    mutationFn: async ({ userId, reason }: { userId: string; reason: string }) => {
+      const res = await axios.post(
+        `${API}/admin/users/${userId}/wallet/freeze`,
+        { reason },
+        { withCredentials: true }
+      );
+      return res.data;
+    },
+    onSuccess: (_, vars) => {
+      setFrozenUsers((prev) => ({ ...prev, [vars.userId]: true }));
+      setFreezeDialogOpen(false);
+      toast({ title: "🧊 Wallet Frozen", description: "Withdrawals blocked for this user." });
+    },
+    onError: (err: any) => {
+      toast({ title: "Error", description: err.response?.data?.message || err.message, variant: "destructive" });
+    },
+  });
+
+  const unfreezeMutation = useMutation({
+    mutationFn: async (userId: string) => {
+      const res = await axios.post(
+        `${API}/admin/users/${userId}/wallet/unfreeze`,
+        {},
+        { withCredentials: true }
+      );
+      return res.data;
+    },
+    onSuccess: (_, userId) => {
+      setFrozenUsers((prev) => ({ ...prev, [userId]: false }));
+      toast({ title: "🔥 Wallet Unfrozen", description: "Withdrawals re-enabled for this user." });
+    },
+    onError: (err: any) => {
+      toast({ title: "Error", description: err.response?.data?.message || err.message, variant: "destructive" });
+    },
+  });
+
+  const isWalletFrozen = (user: User) => {
+    if (frozenUsers[user._id] !== undefined) return frozenUsers[user._id];
+    return user.wallet?.withdrawalsBlocked ?? false;
+  };
+
   const handleBanClick = (user: User) => {
     setSelectedUser(user);
     setBanDialogOpen(true);
+  };
+
+  const handleFreezeClick = (user: User) => {
+    setSelectedUser(user);
+    setFreezeDialogOpen(true);
   };
 
   const handleBanConfirm = (banType: "temporary" | "permanent") => {
@@ -227,7 +279,8 @@ export const UsersTable = () => {
                     {new Date(user.createdAt).toLocaleDateString()}
                   </TableCell>
                   <TableCell>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {/* Account block / unblock */}
                       {!user.isBanned ? (
                         <Button
                           variant="destructive"
@@ -245,6 +298,30 @@ export const UsersTable = () => {
                         >
                             <ShieldOff className="h-3 w-3 mr-1" />
                             Unblock
+                        </Button>
+                      )}
+
+                      {/* Wallet withdrawal freeze / unfreeze */}
+                      {isWalletFrozen(user) ? (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="border-orange-300 text-orange-700 hover:bg-orange-50"
+                          onClick={() => unfreezeMutation.mutate(user._id)}
+                          disabled={unfreezeMutation.isPending}
+                        >
+                          <Flame className="h-3 w-3 mr-1" />
+                          Unfreeze
+                        </Button>
+                      ) : (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="border-blue-300 text-blue-700 hover:bg-blue-50"
+                          onClick={() => handleFreezeClick(user)}
+                        >
+                          <Snowflake className="h-3 w-3 mr-1" />
+                          Freeze
                         </Button>
                       )}
                     </div>
@@ -290,6 +367,18 @@ export const UsersTable = () => {
         onClose={() => setBanDialogOpen(false)}
         onConfirm={handleBanConfirm}
         username={selectedUser?.username || ""}
+      />
+
+      <WalletFreezeDialog
+        isOpen={freezeDialogOpen}
+        username={selectedUser?.username || ""}
+        onClose={() => setFreezeDialogOpen(false)}
+        onConfirm={(reason) => {
+          if (selectedUser) {
+            freezeMutation.mutate({ userId: selectedUser._id, reason });
+          }
+        }}
+        isLoading={freezeMutation.isPending}
       />
     </div>
   );

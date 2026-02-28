@@ -1,4 +1,5 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Table,
   TableBody,
@@ -8,6 +9,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/use-toast";
 import {
@@ -15,355 +17,446 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogFooter,
+  DialogDescription,
 } from "@/components/ui/dialog";
-import { ArrowDownToLine, CheckCircle } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import {
+  CheckCircle,
+  XCircle,
+  Eye,
+  RefreshCw,
+  IndianRupee,
+  Clock,
+  Ban,
+} from "lucide-react";
+import api from "@/lib/api";
 
+interface BankDetails {
+  accountNumber: string;
+  accountName: string;
+  ifscCode: string;
+}
 
+interface Withdrawal {
+  _id: string;
+  freelancerId: { _id: string; username: string; email: string } | string;
+  amount: number;
+  status: "pending" | "approved" | "rejected";
+  description?: string;
+  bankDetails: BankDetails;
+  createdAt: string;
+}
 
-const Payout = () => {
-  const [payouts, setPayouts] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [selectedPayout, setSelectedPayout] = useState(null);
-  const [detailsModalOpen, setDetailsModalOpen] = useState(false);
+const statusColors: Record<string, string> = {
+  pending: "bg-yellow-100 text-yellow-800 border-yellow-200",
+  approved: "bg-green-100 text-green-800 border-green-200",
+  rejected: "bg-red-100 text-red-800 border-red-200",
+};
+
+const PayoutPage = () => {
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
-  // Fetch payouts
-  useEffect(() => {
-    const fetchPayouts = async () => {
-      setLoading(true);
-      try {
-        const response = await fetch(
-          `${import.meta.env.VITE_API_URL}/admin/pay-out/freelancers`,{
-            credentials:"include"
-          }
-        );
+  const [statusFilter, setStatusFilter] = useState<string>("pending");
+  const [page, setPage] = useState(1);
+  const [selectedWithdrawal, setSelectedWithdrawal] = useState<Withdrawal | null>(null);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [rejectOpen, setRejectOpen] = useState(false);
+  const [rejectTarget, setRejectTarget] = useState<Withdrawal | null>(null);
+  const [rejectReason, setRejectReason] = useState("");
 
-        if (!response.ok) {
-          throw new Error(`API error: ${response.status}`);
-        }
-
-        const data = await response.json();
-        setPayouts(data.payouts);
-      } catch (error) {
-        console.error("Failed to fetch payouts:", error);
-        toast({
-          title: "Error fetching payouts",
-          description: "Please try again later",
-          variant: "destructive",
-        });
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchPayouts();
-  }, [toast]);
-
-  // Handle Excel export
-  const handleExportExcel = async () => {
-    try {
-      toast({
-        title: "Export started",
-        description: "Your Excel file is being generated",
-      });
-
-      const response = await fetch(
-        `${import.meta.env.VITE_API_URL}/admin/payout/excel`,
-        {
-          credentials: "include",
-        }
+  // ── Fetch withdrawals ──────────────────────────────────────────────────────
+  const { data, isLoading, isFetching } = useQuery({
+    queryKey: ["withdrawals", statusFilter, page],
+    queryFn: async () => {
+      const res = await api.get(
+        `/admin/withdrawals?status=${statusFilter}&page=${page}&limit=20`
       );
+      return res.data;
+    },
+    placeholderData: { requests: [], pagination: { total: 0, pages: 1 } },
+  });
 
-      if (!response.ok) {
-        throw new Error(`API error: ${response.status}`);
-      }
+  const { requests = [], pagination = { total: 0, pages: 1 } } = data || {};
 
-      // Get the blob from the response
-      const blob = await response.blob();
-
-      // Create a URL for the blob
-      const url = window.URL.createObjectURL(blob);
-
-      // Create a temporary anchor element
-      const a = document.createElement("a");
-      a.style.display = "none";
-      a.href = url;
-
-      // Set the file name from content-disposition header or use default
-      const contentDisposition = response.headers.get("content-disposition");
-      const fileName = contentDisposition
-        ? contentDisposition.split("filename=")[1].replace(/"/g, "")
-        : "payouts.xlsx";
-
-      a.download = fileName;
-
-      // Append to the document, click it, and remove it
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
-
+  // ── Approve mutation ───────────────────────────────────────────────────────
+  const approveMutation = useMutation({
+    mutationFn: async ({ id, note }: { id: string; note?: string }) => {
+      const res = await api.post(`/admin/withdrawals/${id}/approve`, { note });
+      return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["withdrawals"] });
+      setDetailsOpen(false);
       toast({
-        title: "Export completed",
-        description: "Your Excel file has been downloaded",
+        title: "✅ Payout Approved",
+        description: "Withdrawal marked as approved. Remember to process the bank transfer.",
       });
-    } catch (error) {
-      console.error("Failed to export Excel:", error);
+    },
+    onError: (err: any) => {
       toast({
-        title: "Error exporting Excel",
-        description: "Please try again later",
+        title: "Error",
+        description: err.response?.data?.message || "Failed to approve payout",
         variant: "destructive",
       });
+    },
+  });
+
+  // ── Reject mutation ────────────────────────────────────────────────────────
+  const rejectMutation = useMutation({
+    mutationFn: async ({ id, reason }: { id: string; reason: string }) => {
+      const res = await api.post(`/admin/withdrawals/${id}/reject`, { reason });
+      return res.data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["withdrawals"] });
+      setRejectOpen(false);
+      setRejectReason("");
+      setRejectTarget(null);
+      toast({
+        title: "❌ Payout Rejected",
+        description: data.message || "Withdrawal rejected. Funds returned to freelancer's wallet.",
+      });
+    },
+    onError: (err: any) => {
+      toast({
+        title: "Error",
+        description: err.response?.data?.message || "Failed to reject payout",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const openRejectDialog = (w: Withdrawal) => {
+    setRejectTarget(w);
+    setRejectReason("");
+    setRejectOpen(true);
+  };
+
+  const confirmReject = () => {
+    if (rejectTarget && rejectReason.trim().length >= 5) {
+      rejectMutation.mutate({ id: rejectTarget._id, reason: rejectReason.trim() });
     }
   };
 
-  // Process single payout
-  const processPayout = async (userId: string) => {
-    try {
-      toast({
-        title: "Processing payout",
-        description: "Please wait...",
-      });
+  const getFreelancerName = (w: Withdrawal) =>
+    typeof w.freelancerId === "string" ? w.freelancerId : w.freelancerId.username;
 
-      const response = await fetch(
-        `${import.meta.env.VITE_API_URL}/admin/pay-out/freelancers/${userId}`,
-        {
-          method: "POST",
-          credentials:"include",
-          headers: {
-            "Content-Type": "application/json",
-          },
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error(`API error: ${response.status}`);
-      }
-
-      setPayouts((prev) =>
-        prev.map((payout) =>
-          payout.freelancerId._id === userId
-            ? { ...payout, status: "processed" }
-            : payout
-        )
-      );
-
-      toast({
-        title: "Payout processed",
-        description: "The payout has been successfully processed",
-      });
-    } catch (error) {
-      console.error(`Failed to process payout for user ${userId}:`, error);
-      toast({
-        title: "Error processing payout",
-        description: "Please try again later",
-        variant: "destructive",
-      });
-    }
-  };
-
-  // View payout details
-  const viewPayoutDetails = (payout) => {
-    setSelectedPayout(payout);
-    setDetailsModalOpen(true);
-  };
+  const getFreelancerEmail = (w: Withdrawal) =>
+    typeof w.freelancerId === "string" ? "—" : w.freelancerId.email;
 
   return (
-    <div className="container mx-auto py-8">
-      <div className="space-y-6">
-        <div className="flex justify-between items-center">
-          <h2 className="text-3xl font-bold">User Payouts</h2>
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={handleExportExcel}>
-              <ArrowDownToLine className="mr-2 h-4 w-4" />
-              Export Excel
-            </Button>
-          </div>
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-3xl font-bold">Withdrawal Requests</h2>
+          <p className="text-muted-foreground mt-1">
+            {pagination.total} total · approve or reject payout requests
+          </p>
         </div>
+        <div className="flex items-center gap-3">
+          <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(1); }}>
+            <SelectTrigger className="w-36">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="pending">Pending</SelectItem>
+              <SelectItem value="approved">Approved</SelectItem>
+              <SelectItem value="rejected">Rejected</SelectItem>
+            </SelectContent>
+          </Select>
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={() => queryClient.invalidateQueries({ queryKey: ["withdrawals"] })}
+            disabled={isFetching}
+          >
+            <RefreshCw className={`h-4 w-4 ${isFetching ? "animate-spin" : ""}`} />
+          </Button>
+        </div>
+      </div>
 
-        <div className="rounded-md border bg-card">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>User ID</TableHead>
-                <TableHead>Name</TableHead>
-                <TableHead>Request Date</TableHead>
-                <TableHead>Amount</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {loading ? (
-                // Skeleton loading state
-                Array.from({ length: 5 }).map((_, index) => (
-                  <TableRow key={index}>
-                    <TableCell>
-                      <Skeleton className="h-4 w-16" />
-                    </TableCell>
-                    <TableCell>
+      {/* Summary Cards */}
+      <div className="grid grid-cols-3 gap-4">
+        {[
+          { label: "Pending", color: "yellow", icon: Clock, filter: "pending" },
+          { label: "Approved", color: "green", icon: CheckCircle, filter: "approved" },
+          { label: "Rejected", color: "red", icon: Ban, filter: "rejected" },
+        ].map(({ label, color, icon: Icon, filter }) => (
+          <button
+            key={filter}
+            onClick={() => { setStatusFilter(filter); setPage(1); }}
+            className={`p-4 rounded-xl border-2 text-left transition-all hover:shadow-md ${statusFilter === filter
+                ? `border-${color}-400 bg-${color}-50`
+                : "border-border bg-card hover:border-border/60"
+              }`}
+          >
+            <div className="flex items-center gap-2 mb-1">
+              <Icon className={`h-4 w-4 text-${color}-600`} />
+              <span className="text-sm font-medium text-muted-foreground">{label}</span>
+            </div>
+            <p className="text-2xl font-bold">{statusFilter === filter ? pagination.total : "—"}</p>
+          </button>
+        ))}
+      </div>
+
+      {/* Table */}
+      <div className="rounded-xl border bg-card shadow-sm overflow-hidden">
+        <Table>
+          <TableHeader>
+            <TableRow className="bg-muted/30">
+              <TableHead>Freelancer</TableHead>
+              <TableHead>Date</TableHead>
+              <TableHead>Amount</TableHead>
+              <TableHead>Bank Account</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead>Actions</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {isLoading
+              ? Array.from({ length: 5 }).map((_, i) => (
+                <TableRow key={i}>
+                  {Array.from({ length: 6 }).map((_, j) => (
+                    <TableCell key={j}>
                       <Skeleton className="h-4 w-24" />
                     </TableCell>
+                    ))}
+                </TableRow>
+              ))
+              : requests.length > 0
+                ? requests.map((w: Withdrawal) => (
+                  <TableRow key={w._id} className="hover:bg-muted/20">
                     <TableCell>
-                      <Skeleton className="h-4 w-20" />
+                    <div>
+                      <p className="font-medium">{getFreelancerName(w)}</p>
+                      <p className="text-xs text-muted-foreground">{getFreelancerEmail(w)}</p>
+                    </div>
+                    </TableCell>
+                  <TableCell className="text-sm text-muted-foreground">
+                    {new Date(w.createdAt).toLocaleDateString("en-IN", {
+                      day: "2-digit",
+                      month: "short",
+                      year: "numeric",
+                    })}
                     </TableCell>
                     <TableCell>
-                      <Skeleton className="h-4 w-16" />
-                    </TableCell>
+                    <div className="flex items-center gap-1 font-semibold text-green-700">
+                      <IndianRupee className="h-3.5 w-3.5" />
+                      {w.amount.toLocaleString("en-IN")}
+                    </div>
+                  </TableCell>
                     <TableCell>
-                      <Skeleton className="h-6 w-20 rounded-full" />
-                    </TableCell>
-                    <TableCell className="flex gap-2">
-                      <Skeleton className="h-9 w-20 rounded" />
-                      <Skeleton className="h-9 w-20 rounded" />
-                    </TableCell>
-                  </TableRow>
-                ))
-              ) : payouts.length > 0 ? (
-                payouts.map((payout) => (
-                  <TableRow key={payout._id}>
-                    <TableCell className="font-medium">
-                      {payout.freelancerId._id}
-                    </TableCell>
-                    <TableCell>{payout.freelancerId.username}</TableCell>
-                    <TableCell>
-                      {new Date(payout.createdAt).toLocaleDateString()}
-                    </TableCell>
-                    <TableCell>₹{payout.amount.toFixed(2)}</TableCell>
+                    <p className="text-sm">{w.bankDetails.accountName}</p>
+                    <p className="text-xs text-muted-foreground font-mono">
+                      ···{w.bankDetails.accountNumber.slice(-4)} · {w.bankDetails.ifscCode}
+                    </p>
+                  </TableCell>
                     <TableCell>
                       <span
-                        className={`px-2 py-1 rounded-full text-xs ${
-                          payout.status === "processed"
-                            ? "bg-green-100 text-green-800"
-                            : payout.status === "pending"
-                            ? "bg-yellow-100 text-yellow-800"
-                            : "bg-red-100 text-red-800"
+                      className={`px-2.5 py-1 rounded-full text-xs font-medium border ${statusColors[w.status] || "bg-gray-100 text-gray-700"
                         }`}
                       >
-                        {payout.status}
+                      {w.status}
                       </span>
                     </TableCell>
-                    <TableCell className="flex gap-2">
+                  <TableCell>
+                    <div className="flex items-center gap-2">
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => viewPayoutDetails(payout)}
+                        onClick={() => { setSelectedWithdrawal(w); setDetailsOpen(true); }}
                       >
+                        <Eye className="h-3.5 w-3.5 mr-1" />
                         Details
                       </Button>
-                      {payout.status === "pending" && (
-                        <Button
-                          size="sm"
-                          onClick={() => processPayout(payout.freelancerId._id)}
-                        >
-                          <CheckCircle className="mr-2 h-4 w-4" />
-                          Process
-                        </Button>
+                      {w.status === "pending" && (
+                        <>
+                          <Button
+                            size="sm"
+                            className="bg-green-600 hover:bg-green-700 text-white"
+                            onClick={() => approveMutation.mutate({ id: w._id })}
+                            disabled={approveMutation.isPending}
+                          >
+                            <CheckCircle className="h-3.5 w-3.5 mr-1" />
+                            Approve
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            onClick={() => openRejectDialog(w)}
+                            disabled={rejectMutation.isPending}
+                          >
+                            <XCircle className="h-3.5 w-3.5 mr-1" />
+                            Reject
+                          </Button>
+                        </>
                       )}
+                    </div>
                     </TableCell>
                   </TableRow>
                 ))
-              ) : (
+                : (
                 <TableRow>
-                  <TableCell
-                    colSpan={6}
-                    className="text-center py-8 text-muted-foreground"
-                  >
-                    No pending payouts found.
+                    <TableCell colSpan={6} className="text-center py-12 text-muted-foreground">
+                      <div className="flex flex-col items-center gap-2">
+                        <IndianRupee className="h-10 w-10 opacity-20" />
+                        <p>No {statusFilter} withdrawal requests</p>
+                      </div>
                   </TableCell>
                 </TableRow>
               )}
-            </TableBody>
-          </Table>
-        </div>
-
-        {/* Payout Details Modal */}
-        <Dialog open={detailsModalOpen} onOpenChange={setDetailsModalOpen}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Payout Details</DialogTitle>
-            </DialogHeader>
-
-            {selectedPayout ? (
-              <div className="space-y-4 mt-4">
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="text-sm text-muted-foreground">User ID</div>
-                  <div>{selectedPayout.freelancerId._id}</div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="text-sm text-muted-foreground">Name</div>
-                  <div>{selectedPayout.freelancerId.username}</div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="text-sm text-muted-foreground">
-                    Request Date
-                  </div>
-                  <div>{selectedPayout.createdAt}</div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="text-sm text-muted-foreground">Amount</div>
-                  <div>₹{selectedPayout.amount.toFixed(2)}</div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="text-sm text-muted-foreground">Status</div>
-                  <div>
-                    <span
-                      className={`px-2 py-1 rounded-full text-xs ${
-                        selectedPayout.status === "processed"
-                          ? "bg-green-100 text-green-800"
-                          : selectedPayout.status === "pending"
-                          ? "bg-yellow-100 text-yellow-800"
-                          : "bg-red-100 text-red-800"
-                      }`}
-                    >
-                      {selectedPayout.status}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="text-sm text-muted-foreground">
-                    Account Details:
-                  </div>
-                  <ol>
-                    <li className="text-sm text-blue-500">
-                      Account Name: {selectedPayout.bankDetails.accountName}
-                    </li>
-                    <li className="text-sm text-blue-500">
-                      Account Number: {selectedPayout.bankDetails.accountNumber}
-                    </li>
-                    <li className="text-sm text-blue-500">
-                      Bank Ifsc code: {selectedPayout.bankDetails.ifscCode}
-                    </li>
-                  </ol>
-                </div>
-
-                {selectedPayout.status === "pending" && (
-                  <div className="flex justify-end mt-4">
-                    <Button
-                      onClick={() => {
-                        processPayout(selectedPayout.freelancerId._id);
-                        setDetailsModalOpen(false);
-                      }}
-                    >
-                      <CheckCircle className="mr-2 h-4 w-4" />
-                      Process Payout
-                    </Button>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="py-4 text-center">Loading payout details...</div>
-            )}
-          </DialogContent>
-        </Dialog>
+          </TableBody>
+        </Table>
       </div>
+
+      {/* Pagination */}
+      {pagination.pages > 1 && (
+        <div className="flex justify-center gap-2">
+          <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(page - 1)}>
+            Previous
+          </Button>
+          <span className="flex items-center px-4 text-sm text-muted-foreground">
+            Page {page} of {pagination.pages}
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={page >= pagination.pages}
+            onClick={() => setPage(page + 1)}
+          >
+            Next
+          </Button>
+        </div>
+      )}
+
+      {/* Details Modal */}
+      <Dialog open={detailsOpen} onOpenChange={setDetailsOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Withdrawal Details</DialogTitle>
+          </DialogHeader>
+          {selectedWithdrawal && (
+            <div className="space-y-4 mt-2">
+              <div className="grid grid-cols-2 gap-y-3 text-sm">
+                <span className="text-muted-foreground">Freelancer</span>
+                <span className="font-medium">{getFreelancerName(selectedWithdrawal)}</span>
+
+                <span className="text-muted-foreground">Email</span>
+                <span>{getFreelancerEmail(selectedWithdrawal)}</span>
+
+                <span className="text-muted-foreground">Amount</span>
+                <span className="font-semibold text-green-700">
+                  ₹{selectedWithdrawal.amount.toLocaleString("en-IN")}
+                </span>
+
+                <span className="text-muted-foreground">Status</span>
+                <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium border w-fit ${statusColors[selectedWithdrawal.status]}`}>
+                  {selectedWithdrawal.status}
+                </span>
+
+                <span className="text-muted-foreground">Requested</span>
+                <span>{new Date(selectedWithdrawal.createdAt).toLocaleString("en-IN")}</span>
+              </div>
+
+              <div className="p-3 bg-muted/40 rounded-lg space-y-1">
+                <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Bank Details</p>
+                <p className="text-sm font-medium">{selectedWithdrawal.bankDetails.accountName}</p>
+                <p className="text-sm font-mono">{selectedWithdrawal.bankDetails.accountNumber}</p>
+                <p className="text-sm text-muted-foreground">IFSC: {selectedWithdrawal.bankDetails.ifscCode}</p>
+              </div>
+
+              {selectedWithdrawal.description && (
+                <div className="text-sm text-muted-foreground border-t pt-3">
+                  <p className="font-medium text-foreground mb-1">Notes</p>
+                  <p>{selectedWithdrawal.description}</p>
+                </div>
+              )}
+
+              {selectedWithdrawal.status === "pending" && (
+                <DialogFooter className="gap-2 pt-2">
+                  <Button
+                    variant="destructive"
+                    onClick={() => { setDetailsOpen(false); openRejectDialog(selectedWithdrawal); }}
+                  >
+                    <XCircle className="h-4 w-4 mr-2" />
+                    Reject & Refund
+                  </Button>
+                  <Button
+                    className="bg-green-600 hover:bg-green-700"
+                    onClick={() => approveMutation.mutate({ id: selectedWithdrawal._id })}
+                    disabled={approveMutation.isPending}
+                  >
+                    <CheckCircle className="h-4 w-4 mr-2" />
+                    {approveMutation.isPending ? "Approving..." : "Approve Payout"}
+                  </Button>
+                </DialogFooter>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Reject Confirmation Dialog */}
+      <Dialog open={rejectOpen} onOpenChange={(o) => { if (!o) { setRejectOpen(false); setRejectReason(""); } }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <XCircle className="h-5 w-5 text-destructive" />
+              Reject Withdrawal
+            </DialogTitle>
+            <DialogDescription>
+              This will reject the withdrawal of{" "}
+              <strong>₹{rejectTarget?.amount?.toLocaleString("en-IN")}</strong> and
+              automatically return the funds to the freelancer's wallet balance.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-2 py-2">
+            <Label htmlFor="reject-reason">
+              Rejection Reason <span className="text-red-500">*</span>
+            </Label>
+            <Textarea
+              id="reject-reason"
+              placeholder="e.g. Bank details are incorrect, suspicious account, dispute pending..."
+              value={rejectReason}
+              onChange={(e) => setRejectReason(e.target.value)}
+              rows={3}
+              className="resize-none"
+            />
+            <p className="text-xs text-muted-foreground">Minimum 5 characters required</p>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => { setRejectOpen(false); setRejectReason(""); }}
+              disabled={rejectMutation.isPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={confirmReject}
+              disabled={rejectReason.trim().length < 5 || rejectMutation.isPending}
+            >
+              {rejectMutation.isPending ? "Rejecting..." : "Confirm Rejection"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
 
-export default Payout;
+export default PayoutPage;

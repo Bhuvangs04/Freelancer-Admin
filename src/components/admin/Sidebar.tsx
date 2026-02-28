@@ -38,6 +38,8 @@ const menuSections = [
     label: "Management",
     items: [
       { title: "Users", icon: Users, id: "users" },
+      { title: "Skills", icon: ShieldCheck, id: "skills" },
+      { title: "Challenges", icon: FileText, id: "challenges" },
       { title: "Projects", icon: FolderKanban, id: "projects" },
       { title: "Escrow", icon: Wallet, id: "escrow" },
       { title: "Disputes", icon: AlertTriangle, id: "disputes" },

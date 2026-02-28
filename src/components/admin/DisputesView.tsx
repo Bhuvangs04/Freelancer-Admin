@@ -20,7 +20,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   AlertTriangle, Gavel, ArrowUpCircle, User, MessageSquare,
-  Clock, ChevronLeft, FileText, Shield, DollarSign,
+  Clock, ChevronLeft, FileText, Shield, DollarSign, RotateCcw,
 } from "lucide-react";
 
 const API = import.meta.env.VITE_API_URL;
@@ -129,6 +129,11 @@ export const DisputesView = () => {
     penaltyApplied: false,
   });
 
+  /* clawback dialog */
+  const [clawbackOpen, setClawbackOpen] = useState(false);
+  const [clawbackForm, setClawbackForm] = useState({ amount: 0, reason: "" });
+  const [clawbackLoading, setClawbackLoading] = useState(false);
+
   /* chat */
   const [chatMsg, setChatMsg] = useState("");
 
@@ -217,6 +222,33 @@ export const DisputesView = () => {
       fetchDisputes();
     } catch (err: any) {
       toast.error(err.response?.data?.message || "Failed to resolve");
+    }
+  };
+
+  const doClawback = async () => {
+    if (!selected) return;
+    if (!clawbackForm.reason || clawbackForm.reason.trim().length < 10) {
+      toast.error("Reason must be at least 10 characters"); return;
+    }
+    if (!clawbackForm.amount || clawbackForm.amount <= 0) {
+      toast.error("Enter a valid amount"); return;
+    }
+    try {
+      setClawbackLoading(true);
+      const projectId = selected.projectId?._id;
+      await axios.post(
+        `${API}/admin/projects/${projectId}/clawback`,
+        { amount: Number(clawbackForm.amount), reason: clawbackForm.reason },
+        { withCredentials: true }
+      );
+      toast.success("Clawback processed successfully");
+      setClawbackOpen(false);
+      setClawbackForm({ amount: 0, reason: "" });
+      await openDetail(selected._id);
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || "Clawback failed");
+    } finally {
+      setClawbackLoading(false);
     }
   };
 
@@ -375,6 +407,17 @@ export const DisputesView = () => {
                   <Button size="sm" className="bg-green-600 hover:bg-green-700" onClick={() => setResolveOpen(true)}>
                     <Gavel className="h-4 w-4 mr-1" /> Resolve
                   </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="border-orange-500 text-orange-600 hover:bg-orange-50"
+                    onClick={() => {
+                      setClawbackForm({ amount: escrowRef?.amount ?? 0, reason: "" });
+                      setClawbackOpen(true);
+                    }}
+                  >
+                    <RotateCcw className="h-4 w-4 mr-1" /> Clawback Payment
+                  </Button>
                 </CardContent>
               </Card>
             )}
@@ -458,6 +501,59 @@ export const DisputesView = () => {
             </TabsContent>
           )}
         </Tabs>
+
+        {/* ── Clawback Dialog ── */}
+        <Dialog open={clawbackOpen} onOpenChange={setClawbackOpen}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 text-orange-600">
+                <RotateCcw className="h-5 w-5" /> Clawback Payment
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 py-2">
+              <p className="text-sm text-muted-foreground">
+                This will <strong>debit the freelancer's wallet</strong> and return the amount to the client,
+                bypassing any wallet freeze. This action is <strong>irreversible</strong>.
+              </p>
+              {escrowRef && (
+                <div className="rounded-md bg-orange-50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-800 p-3 text-sm">
+                  <p className="font-medium text-orange-700 dark:text-orange-400">Escrow Reference</p>
+                  <p className="text-muted-foreground">Released amount: ₹{(escrowRef.originalAmount || escrowRef.amount)?.toLocaleString()} · Status: {escrowRef.status}</p>
+                </div>
+              )}
+              <div>
+                <label className="text-sm font-medium">Amount to Claw Back (₹) *</label>
+                <Input
+                  type="number"
+                  min={1}
+                  value={clawbackForm.amount}
+                  onChange={(e) => setClawbackForm((f) => ({ ...f, amount: Number(e.target.value) }))}
+                  className="mt-1"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium">Reason * (min 10 chars)</label>
+                <Textarea
+                  rows={3}
+                  placeholder="e.g. Fraud detected — freezing and reversing payment as per investigation findings"
+                  value={clawbackForm.reason}
+                  onChange={(e) => setClawbackForm((f) => ({ ...f, reason: e.target.value }))}
+                  className="mt-1"
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setClawbackOpen(false)} disabled={clawbackLoading}>Cancel</Button>
+              <Button
+                className="bg-orange-600 hover:bg-orange-700 text-white"
+                onClick={doClawback}
+                disabled={clawbackLoading}
+              >
+                {clawbackLoading ? "Processing…" : "Confirm Clawback"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         {/* ── Resolve Dialog ── */}
         <Dialog open={resolveOpen} onOpenChange={setResolveOpen}>
