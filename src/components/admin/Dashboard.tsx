@@ -15,6 +15,7 @@ import { AdminSettingsView } from "./AdminSettingsView";
 import { AdminManagementView } from "./AdminManagementView";
 import { SkillVerificationsView } from "./SkillVerificationsView";
 import { SkillChallengesView } from "./SkillChallengesView";
+import { AiApiKeysView } from "./AiApiKeysView";
 
 export const Dashboard = ({ currentView }: { currentView: string }) => {
   const renderView = () => {
@@ -51,6 +52,8 @@ export const Dashboard = ({ currentView }: { currentView: string }) => {
         return <SkillVerificationsView />;
       case "challenges":
         return <SkillChallengesView />;
+      case "ai-keys":
+        return <AiApiKeysView />;
       default:
         return <Overview />;
     }

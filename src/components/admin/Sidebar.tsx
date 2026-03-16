@@ -13,6 +13,7 @@ import {
   AlertTriangle,
   UserCog,
   ShieldCheck,
+  KeyRound,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
@@ -58,6 +59,7 @@ const menuSections = [
       { title: "Settings", icon: Settings, id: "settings" },
       { title: "Content", icon: FileText, id: "content" },
       { title: "Reviews", icon: Star, id: "reviews" },
+      { title: "AI API Keys", icon: KeyRound, id: "ai-keys" },
     ],
   },
   {
