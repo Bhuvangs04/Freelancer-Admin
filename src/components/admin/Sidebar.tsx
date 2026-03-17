@@ -14,6 +14,7 @@ import {
   UserCog,
   ShieldCheck,
   KeyRound,
+  Gift,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
@@ -51,6 +52,7 @@ const menuSections = [
     items: [
       { title: "Payments", icon: CreditCard, id: "payments" },
       { title: "Payouts", icon: Briefcase, id: "payout" },
+      { title: "Bonus & Penalty", icon: Gift, id: "bonus-penalty" },
     ],
   },
   {

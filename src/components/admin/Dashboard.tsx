@@ -16,6 +16,7 @@ import { AdminManagementView } from "./AdminManagementView";
 import { SkillVerificationsView } from "./SkillVerificationsView";
 import { SkillChallengesView } from "./SkillChallengesView";
 import { AiApiKeysView } from "./AiApiKeysView";
+import { BonusPenaltyView } from "./BonusPenaltyView";
 
 export const Dashboard = ({ currentView }: { currentView: string }) => {
   const renderView = () => {
@@ -26,6 +27,8 @@ export const Dashboard = ({ currentView }: { currentView: string }) => {
         return <PaymentsView />;
       case "payout":
         return <Payout />;
+      case "bonus-penalty":
+        return <BonusPenaltyView />;
       case "projects":
         return <ProjectsView />;
       case "escrow":
